@@ -1,65 +1,104 @@
-import datetime
-import json
 import logging
 
+from localstack import config, constants
 from localstack.extensions.api import Extension, http
-from localstack.utils.patch import patch
-from rolo import route, Request, Response
-
-from localstack_lambda_inspector import invocation_log
+from localstack.utils import net
+from localstack.utils.serving import Server
+from localstack.utils.urls import localstack_host
+from rolo.proxy import ProxyHandler
 
 LOG = logging.getLogger(__name__)
 
 
-class Api:
-    @route("/_extensions/lambda-inspector/invocations", methods=["GET"])
-    def list_invocations(self, request: Request):
-        invocations = invocation_log.get_invocations()
-
-        if request.args.get("arn"):
-            invocations = [i for i in invocations if i.function_arn == request.args.get("arn")]
-
-        # serialize
-        doc = [i.to_dict() for i in invocations]
-
-        if request.args.get("formatted") in ["true", "1"]:
-            for invocation in doc:
-                # split logs into a more readable format
-                invocation["result"]["logs"] = invocation["result"]["logs"].splitlines()
-
-                # parse payloads for nicer displaying
-                if invocation["payload"].startswith("{"):
-                    invocation["payload"] = json.loads(invocation["payload"])
-                if invocation["result"]["payload"].startswith("{"):
-                    invocation["result"]["payload"] = json.loads(invocation["result"]["payload"])
-
-        return Response.for_json({"invocations": doc})
-
-
 class LocalstackLambdaInspector(Extension):
     name = "localstack-lambda-inspector"
+    hostname_prefix = "lambda-inspector."
+
+    server: Server | None
+
+    def __init__(self):
+        self.server = None
+
+    def on_extension_load(self):
+        # TODO: logging should be configured automatically for extensions
+        from localstack.aws.handlers import cors
+
+        if config.DEBUG:
+            level = logging.DEBUG
+        else:
+            level = logging.INFO
+        logging.getLogger("localstack_lambda_inspector").setLevel(level=level)
+
+        cors.ALLOWED_CORS_ORIGINS.append(self.get_url())
 
     def on_platform_start(self):
-        # patch lambda ExecutorEndpoint to log invocations
-        from localstack.services.lambda_.invocation.executor_endpoint import ExecutorEndpoint
+        # this will apply patches directly
+        from . import patches  # noqa
+        from localstack_lambda_inspector.ui.server import StreamlitApplicationServer
+        from localstack_lambda_inspector.ui import streamlit_app
 
-        @patch(ExecutorEndpoint.invoke, pass_target=True)
-        def _invoke(fn, self, payload: dict[str, str]):
-            timestamp = datetime.datetime.now(tz=datetime.UTC)
+        self.server = StreamlitApplicationServer(
+            streamlit_app.__file__,
+            port=net.get_free_tcp_port(),
+        )
+        LOG.info(
+            "starting Localstack Lambda Inspector UI at %s (serving %s)",
+            self.server.url,
+            streamlit_app.__file__,
+        )
+        self.server.start()
 
-            # perform the invoke
-            result = fn(self, payload)
+        LOG.debug("adding allowed CORS origin %s", self.get_url())
 
-            invocation_log.log_invocation(
-                timestamp,
-                payload["invoke-id"],
-                payload["invoked-function-arn"],
-                payload["payload"],
-                result,
-            )
+    def get_localstack_url(self) -> str:
+        return f"{constants.LOCALHOST_HOSTNAME}:{localstack_host().port}"
 
-            return result
+    def get_url(self):
+        url = f"http://{self.hostname_prefix}{self.get_localstack_url()}"
+        return url
+
+    def on_platform_shutdown(self):
+        if self.server:
+            self.server.shutdown()
+
+    def on_platform_ready(self):
+        LOG.info("serving lambda-inspector extension on host: %s", self.get_url())
 
     def update_gateway_routes(self, router: http.Router[http.RouteHandler]):
         # add the API to the router
+        from localstack_lambda_inspector.api import Api
+        from localstack_lambda_inspector.ws import WebsocketProxyHandler
+
         router.add(Api())
+
+        proxy = ProxyHandler(self.server.url)
+
+        router.add(
+            "/",
+            host=f"{self.hostname_prefix}<host>",
+            endpoint=proxy,
+            methods=["GET", "POST", "PATCH", "OPTIONS", "DELETE"],
+        )
+        router.add(
+            "/<path:path>",
+            host=f"{self.hostname_prefix}<host>",
+            endpoint=proxy,
+            methods=["GET", "POST", "PATCH", "OPTIONS", "DELETE"],
+        )
+
+        ws_url = "ws://" + self.server.url.removeprefix("http://").removeprefix(
+            "https://"
+        )
+        ws_proxy = WebsocketProxyHandler(ws_url)
+        router.add(
+            "/",
+            host=f"{self.hostname_prefix}<host>",
+            endpoint=ws_proxy,
+            methods=["WEBSOCKET"],
+        )
+        router.add(
+            "/<path:path>",
+            host=f"{self.hostname_prefix}<host>",
+            endpoint=ws_proxy,
+            methods=["WEBSOCKET"],
+        )

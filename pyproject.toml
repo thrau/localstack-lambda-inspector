@@ -17,6 +17,7 @@ classifiers = []
 dependencies = [
     "streamlit",
     "rolo",
+    "websockets",
 ]
 
 [project.urls]
@@ -24,7 +25,8 @@ Homepage = "https://github.com/thrau/localstack-lambda-inspector"
 
 [project.optional-dependencies]
 dev = [
-    "localstack>=0.0.0.dev"
+    "localstack>=0.0.0.dev",
+    "ruff",
 ]
 
 [project.entry-points."localstack.extensions"]

@@ -17,6 +17,9 @@ clean:
 	rm -rf .eggs/
 	rm -rf *.egg-info/
 
+format: venv
+	$(VENV_RUN); python -m ruff format .; python -m ruff check . --fix
+
 install: venv
 	$(VENV_RUN); python -m plux entrypoints
 
