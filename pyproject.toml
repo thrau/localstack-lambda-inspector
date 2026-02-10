@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools", 'wheel']
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "localstack-lambda-inspector"
+version = "0.1.0"
+description = "LocalStack Extension: LocalStack Lambda Inspector"
+readme = {file = "README.md", content-type = "text/markdown; charset=UTF-8"}
+requires-python = ">=3.8"
+license = {text = "UNLICENSED"}
+authors = [
+    { name = "Thomas Rausch", email = "thomas@thrau.at" }
+]
+keywords = ["localstack", "localstack-extension", "extension"]
+classifiers = []
+dependencies = [
+    "streamlit",
+    "rolo",
+]
+
+[project.urls]
+Homepage = "https://github.com/thrau/localstack-lambda-inspector"
+
+[project.optional-dependencies]
+dev = [
+    "localstack>=0.0.0.dev"
+]
+
+[project.entry-points."localstack.extensions"]
+localstack_lambda_inspector = "localstack_lambda_inspector.extension:LocalstackLambdaInspector"
