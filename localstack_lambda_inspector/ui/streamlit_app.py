@@ -3,6 +3,7 @@ import os
 import requests
 import streamlit as st
 
+
 # Set page configuration
 st.set_page_config(page_title="Lambda Invocations Viewer", layout="wide")
 

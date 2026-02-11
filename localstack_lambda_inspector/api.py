@@ -5,6 +5,24 @@ from rolo import Request, route, Response
 from localstack_lambda_inspector import invocation_log
 
 
+def recursive_dict_parse(obj):
+    if isinstance(obj, str):
+        if obj.startswith("{"):
+            try:
+                new_obj = json.loads(obj)
+            except ValueError:
+                return obj
+            return recursive_dict_parse(new_obj)
+
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            obj[k] = recursive_dict_parse(v)
+    elif isinstance(obj, list):
+        obj = [recursive_dict_parse(item) for item in obj]
+
+    return obj
+
+
 class Api:
     @route("/_extension/lambda-inspector/invocations", methods=["GET"])
     def list_invocations(self, request: Request):
@@ -24,12 +42,9 @@ class Api:
                 # split logs into a more readable format
                 invocation["result"]["logs"] = invocation["result"]["logs"].splitlines()
 
-                # parse payloads for nicer displaying
-                if invocation["payload"].startswith("{"):
-                    invocation["payload"] = json.loads(invocation["payload"])
-                if invocation["result"]["payload"].startswith("{"):
-                    invocation["result"]["payload"] = json.loads(
-                        invocation["result"]["payload"]
-                    )
+                invocation["payload"] = recursive_dict_parse(invocation["payload"])
+                invocation["result"]["payload"] = recursive_dict_parse(
+                    invocation["result"]["payload"]
+                )
 
         return Response.for_json({"invocations": doc})
