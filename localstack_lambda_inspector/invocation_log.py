@@ -42,6 +42,11 @@ class InvocationLog:
         )
         self._lock = threading.Lock()
 
+    def clear(self):
+        with self._lock:
+            self._file.seek(0)
+            self._file.truncate()
+
     def append(self, record: InvocationLogRecord):
         doc = record.to_dict()
         line = json.dumps(doc, cls=CustomEncoder) + "\n"
@@ -94,3 +99,7 @@ def log_invocation(
 
 def get_invocations() -> list[InvocationLogRecord]:
     return INVOCATIONS.get_all()
+
+
+def clear():
+    return INVOCATIONS.clear()

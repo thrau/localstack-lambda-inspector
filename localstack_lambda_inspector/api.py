@@ -48,3 +48,8 @@ class Api:
                 )
 
         return Response.for_json({"invocations": doc})
+
+    @route("/_extension/lambda-inspector/invocations", methods=["DELETE"])
+    def delete_invocations(self, request: Request):
+        invocation_log.clear()
+        return Response.for_json({"message": "invocations cleared"})

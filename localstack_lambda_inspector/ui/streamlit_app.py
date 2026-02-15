@@ -27,6 +27,19 @@ def fetch_invocations():
         return None
 
 
+def clear_invocations():
+    try:
+        # Strip query parameters for DELETE request
+        base_url = ENDPOINT_URL.split("?")[0]
+        response = requests.delete(base_url)
+        response.raise_for_status()
+        st.success("Invocations cleared!")
+        st.cache_data.clear()
+        st.rerun()
+    except requests.exceptions.RequestException as e:
+        st.error(f"Error clearing data: {e}")
+
+
 # Sidebar for filters and controls
 st.sidebar.header("Filters & Controls")
 
@@ -42,6 +55,10 @@ max_invocations = st.sidebar.number_input(
 if st.sidebar.button("Refresh Data"):
     st.cache_data.clear()
     st.rerun()
+
+# Clear button in sidebar
+if st.sidebar.button("Clear Invocations"):
+    clear_invocations()
 
 data = fetch_invocations()
 
